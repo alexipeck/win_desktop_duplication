@@ -14,7 +14,7 @@ include = [
     "src/*",
     "Cargo.toml",
     "README.md",
-    "LISENCE.md"
+    "LICENSE.md"
 ]
 
 [lib]
@@ -28,6 +28,7 @@ crate-type = ["lib"]   # The crate types to generate.
 [features]
 serde = ["dep:serde"]
 cross_platform_types = []
+windows = ["dep:windows", "tokio", "futures", "log"]
 default = ["windows"]
 
 
@@ -39,10 +40,10 @@ targets = ["aarch64-pc-windows-msvc", "i686-pc-windows-msvc", "x86_64-pc-windows
 env_logger = "0.11.5"
 
 [dependencies]
-futures = "0.3.30"
-log = "0.4.22"
+futures = { version = "0.3.30", optional = true }
+log = { version = "0.4.22", optional = true }
 serde = { version = "1.0.204", optional = true, features = ["derive"] }
-tokio = { version = "1.39.2", features = ["rt", "time", "macros"] }
+tokio = { version = "1.39.2", optional = true, features = ["rt", "time", "macros"] }
 windows = { version = "0.57.0", optional = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D11",

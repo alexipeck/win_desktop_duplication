@@ -9,180 +9,45 @@ use std::time::Duration;
 
 use futures::StreamExt;
 use log::{debug, error, trace, warn};
-use windows::core::Interface;
-use windows::core::Result as WinResult;
-use windows::Win32::Foundation::{
-    GetLastError, BOOL, E_ACCESSDENIED, E_INVALIDARG, GENERIC_READ, POINT,
+use windows::{
+    core::{Interface, Result as WinResult},
+    Win32::{
+        Foundation::{GetLastError, BOOL, E_ACCESSDENIED, E_INVALIDARG, GENERIC_READ, POINT},
+        Graphics::{
+            Direct3D::{D3D_DRIVER_TYPE_UNKNOWN, D3D_FEATURE_LEVEL, D3D_FEATURE_LEVEL_11_1},
+            Direct3D11::{
+                D3D11CreateDevice, ID3D11Device4, ID3D11DeviceContext4, D3D11_BIND_FLAG,
+                D3D11_BIND_RENDER_TARGET, D3D11_CREATE_DEVICE_FLAG, D3D11_RESOURCE_MISC_FLAG,
+                D3D11_RESOURCE_MISC_GDI_COMPATIBLE, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
+                D3D11_USAGE, D3D11_USAGE_DEFAULT,
+            },
+            Dxgi::{
+                Common::{
+                    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R10G10B10A2_UNORM,
+                    DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_SAMPLE_DESC,
+                },
+                IDXGIDevice4, IDXGIOutputDuplication, IDXGIResource, IDXGISurface1,
+                DXGI_ERROR_ACCESS_DENIED, DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_INVALID_CALL,
+                DXGI_ERROR_SESSION_DISCONNECTED, DXGI_ERROR_UNSUPPORTED, DXGI_ERROR_WAIT_TIMEOUT,
+            },
+            Gdi::DeleteObject,
+        },
+        System::StationsAndDesktops::DF_ALLOWOTHERACCOUNTHOOK,
+        System::StationsAndDesktops::{OpenInputDesktop, SetThreadDesktop, DESKTOP_ACCESS_FLAGS},
+        UI::WindowsAndMessaging::{
+            DrawIconEx, GetCursorInfo, GetIconInfo, CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HCURSOR,
+        },
+    },
 };
-use windows::Win32::Graphics::Direct3D::{
-    D3D_DRIVER_TYPE_UNKNOWN, D3D_FEATURE_LEVEL, D3D_FEATURE_LEVEL_11_1,
+
+use crate::{
+    devices::Adapter,
+    error::DDApiError,
+    outputs::{Display, DisplayVSyncStream},
+    texture::Texture,
+    types::texture::TextureDesc,
+    Result,
 };
-use windows::Win32::Graphics::Direct3D11::{
-    D3D11CreateDevice, ID3D11Device4, ID3D11DeviceContext4, D3D11_BIND_FLAG,
-    D3D11_BIND_RENDER_TARGET, D3D11_CREATE_DEVICE_FLAG, D3D11_RESOURCE_MISC_FLAG,
-    D3D11_RESOURCE_MISC_GDI_COMPATIBLE, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC, D3D11_USAGE,
-    D3D11_USAGE_DEFAULT,
-};
-use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT,
-    DXGI_SAMPLE_DESC,
-};
-use windows::Win32::Graphics::Dxgi::{
-    IDXGIDevice4, IDXGIOutputDuplication, IDXGIResource, IDXGISurface1, DXGI_ERROR_ACCESS_DENIED,
-    DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_INVALID_CALL, DXGI_ERROR_SESSION_DISCONNECTED,
-    DXGI_ERROR_UNSUPPORTED, DXGI_ERROR_WAIT_TIMEOUT,
-};
-use windows::Win32::Graphics::Gdi::DeleteObject;
-use windows::Win32::System::StationsAndDesktops::DF_ALLOWOTHERACCOUNTHOOK;
-use windows::Win32::System::StationsAndDesktops::{
-    OpenInputDesktop, SetThreadDesktop, DESKTOP_ACCESS_FLAGS,
-};
-use windows::Win32::UI::WindowsAndMessaging::{
-    DrawIconEx, GetCursorInfo, GetIconInfo, CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HCURSOR,
-};
-
-use crate::devices::Adapter;
-use crate::error::DDApiError;
-use crate::outputs::{Display, DisplayVSyncStream};
-use crate::texture::Texture;
-use crate::types::texture::TextureDesc;
-use crate::Result;
-
-#[cfg(test)]
-mod test {
-    use std::sync::Once;
-    use std::time::{Duration, Instant};
-
-    use futures::select;
-    use futures::FutureExt;
-    use log::LevelFilter::Debug;
-    use tokio::time::interval;
-
-    use crate::devices::AdapterFactory;
-    use crate::duplication::DesktopDuplicationApi;
-    use crate::types::outputs::DisplayMode;
-    use crate::utils::{co_init, set_process_dpi_awareness};
-    use crate::DDApiError;
-
-    static INIT: Once = Once::new();
-
-    pub fn initialize() {
-        INIT.call_once(|| {
-            let _ = env_logger::builder()
-                .is_test(true)
-                .filter_level(Debug)
-                .try_init();
-        });
-    }
-
-    #[test]
-    fn test_duplication() {
-        initialize();
-
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .thread_name("graphics_thread".to_owned())
-            .enable_time()
-            .build()
-            .unwrap();
-
-        rt.block_on(async {
-            set_process_dpi_awareness();
-            co_init();
-
-            let adapter = AdapterFactory::new().get_adapter_by_idx(0).unwrap();
-            let output = adapter.get_display_by_idx(0).unwrap();
-            let mut dupl = DesktopDuplicationApi::new(adapter, output.clone()).unwrap();
-            let curr_mode = output.get_current_display_mode().unwrap();
-            let new_mode = DisplayMode {
-                width: 1920,
-                height: 1080,
-                orientation: Default::default(),
-                refresh_num: curr_mode.refresh_num,
-                refresh_den: curr_mode.refresh_den,
-                hdr: false,
-            };
-
-            let mut counter = 0;
-            let mut secs = 0;
-            let mut interval = interval(Duration::from_secs(1));
-            loop {
-                select! {
-                    tex = dupl.acquire_next_vsync_frame().fuse()=>{
-                        match &tex {
-                            Err(DDApiError::AccessDenied)| Err(DDApiError::AccessLost)  =>  {
-                                println!("error: {:?}",tex.err())
-                            }
-                            Err(e)=>{
-                                println!("error: {:?}",e)
-                            }
-                            Ok(_)=>{
-                                counter += 1;
-                            }
-                        }
-                    },
-                    _ = interval.tick().fuse() => {
-                        println!("fps: {}",counter);
-                        counter = 0;
-                        secs+=1;
-                        if secs == 5 {
-                            println!("5 secs");
-                            output.set_display_mode(&new_mode).unwrap();
-                        } else if secs ==10 {
-                            output.set_display_mode(&curr_mode).unwrap();
-                            break;
-                        }
-                    }
-                };
-            }
-        });
-    }
-
-    #[test]
-    fn test_duplication_blocking() {
-        initialize();
-
-        set_process_dpi_awareness();
-        co_init();
-
-        let adapter = AdapterFactory::new().get_adapter_by_idx(0).unwrap();
-        let output = adapter.get_display_by_idx(0).unwrap();
-        let mut dupl = DesktopDuplicationApi::new(adapter, output.clone()).unwrap();
-        let curr_mode = output.get_current_display_mode().unwrap();
-        let new_mode = DisplayMode {
-            width: 1920,
-            height: 1080,
-            orientation: Default::default(),
-            refresh_num: curr_mode.refresh_num,
-            refresh_den: curr_mode.refresh_den,
-            hdr: false,
-        };
-
-        let mut counter = 0;
-        let mut secs = 0;
-        let instant = Instant::now();
-        loop {
-            let _ = output.wait_for_vsync();
-            let tex = dupl.acquire_next_frame_now();
-            if let Err(e) = tex {
-                println!("error: {:?}", e)
-            } else {
-                counter += 1;
-            };
-            if secs != instant.elapsed().as_secs() {
-                println!("fps: {}", counter);
-                counter = 0;
-                secs += 1;
-                if secs == 1 {
-                    println!("1 secs");
-                    output.set_display_mode(&new_mode).unwrap();
-                } else if secs == 5 {
-                    output.set_display_mode(&curr_mode).unwrap();
-                    break;
-                }
-            }
-        }
-    }
-}
 
 /// Provides asynchronous, synchronous api for windows desktop duplication with additional features such as
 /// cursor pre-drawn, frame rate synced to desktop refresh rate.
@@ -692,5 +557,142 @@ impl DuplicationState {
         self.last_resource = None;
         self.cursor_frame = None;
         self.frame_locked = false;
+    }
+}
+
+#[cfg(feature = "test")]
+#[cfg(test)]
+mod test {
+    use std::sync::Once;
+    use std::time::{Duration, Instant};
+
+    use futures::select;
+    use futures::FutureExt;
+    use log::LevelFilter::Debug;
+    use tokio::time::interval;
+
+    use crate::devices::AdapterFactory;
+    use crate::duplication::DesktopDuplicationApi;
+    use crate::types::outputs::DisplayMode;
+    use crate::utils::{co_init, set_process_dpi_awareness};
+    use crate::DDApiError;
+
+    static INIT: Once = Once::new();
+
+    pub fn initialize() {
+        INIT.call_once(|| {
+            let _ = env_logger::builder()
+                .is_test(true)
+                .filter_level(Debug)
+                .try_init();
+        });
+    }
+
+    #[test]
+    fn test_duplication() {
+        initialize();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .thread_name("graphics_thread".to_owned())
+            .enable_time()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            set_process_dpi_awareness();
+            co_init();
+
+            let adapter = AdapterFactory::new().get_adapter_by_idx(0).unwrap();
+            let output = adapter.get_display_by_idx(0).unwrap();
+            let mut dupl = DesktopDuplicationApi::new(adapter, output.clone()).unwrap();
+            let curr_mode = output.get_current_display_mode().unwrap();
+            let new_mode = DisplayMode {
+                width: 1920,
+                height: 1080,
+                orientation: Default::default(),
+                refresh_num: curr_mode.refresh_num,
+                refresh_den: curr_mode.refresh_den,
+                hdr: false,
+            };
+
+            let mut counter = 0;
+            let mut secs = 0;
+            let mut interval = interval(Duration::from_secs(1));
+            loop {
+                select! {
+                    tex = dupl.acquire_next_vsync_frame().fuse()=>{
+                        match &tex {
+                            Err(DDApiError::AccessDenied)| Err(DDApiError::AccessLost)  =>  {
+                                println!("error: {:?}",tex.err())
+                            }
+                            Err(e)=>{
+                                println!("error: {:?}",e)
+                            }
+                            Ok(_)=>{
+                                counter += 1;
+                            }
+                        }
+                    },
+                    _ = interval.tick().fuse() => {
+                        println!("fps: {}",counter);
+                        counter = 0;
+                        secs+=1;
+                        if secs == 5 {
+                            println!("5 secs");
+                            output.set_display_mode(&new_mode).unwrap();
+                        } else if secs ==10 {
+                            output.set_display_mode(&curr_mode).unwrap();
+                            break;
+                        }
+                    }
+                };
+            }
+        });
+    }
+
+    #[test]
+    fn test_duplication_blocking() {
+        initialize();
+
+        set_process_dpi_awareness();
+        co_init();
+
+        let adapter = AdapterFactory::new().get_adapter_by_idx(0).unwrap();
+        let output = adapter.get_display_by_idx(0).unwrap();
+        let mut dupl = DesktopDuplicationApi::new(adapter, output.clone()).unwrap();
+        let curr_mode = output.get_current_display_mode().unwrap();
+        let new_mode = DisplayMode {
+            width: 1920,
+            height: 1080,
+            orientation: Default::default(),
+            refresh_num: curr_mode.refresh_num,
+            refresh_den: curr_mode.refresh_den,
+            hdr: false,
+        };
+
+        let mut counter = 0;
+        let mut secs = 0;
+        let instant = Instant::now();
+        loop {
+            let _ = output.wait_for_vsync();
+            let tex = dupl.acquire_next_frame_now();
+            if let Err(e) = tex {
+                println!("error: {:?}", e)
+            } else {
+                counter += 1;
+            };
+            if secs != instant.elapsed().as_secs() {
+                println!("fps: {}", counter);
+                counter = 0;
+                secs += 1;
+                if secs == 1 {
+                    println!("1 secs");
+                    output.set_display_mode(&new_mode).unwrap();
+                } else if secs == 5 {
+                    output.set_display_mode(&curr_mode).unwrap();
+                    break;
+                }
+            }
+        }
     }
 }

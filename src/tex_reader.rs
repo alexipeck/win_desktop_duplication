@@ -2,96 +2,12 @@
 //! textures.
 
 use std::ptr::copy;
-
 use windows::Win32::Graphics::Direct3D11::{
     ID3D11Device4, ID3D11DeviceContext4, D3D11_CPU_ACCESS_READ, D3D11_MAPPED_SUBRESOURCE,
     D3D11_MAP_READ, D3D11_USAGE_STAGING,
 };
 
 use crate::{error::DDApiError, texture::Texture, types::texture::ColorFormat, Result};
-
-#[cfg(test)]
-mod test {
-    use std::sync::Once;
-    use std::time::Duration;
-
-    use futures::{select, FutureExt};
-    use log::LevelFilter::Debug;
-    use tokio::time::interval;
-
-    use crate::devices::AdapterFactory;
-    use crate::tex_reader::TextureReader;
-    use crate::{co_init, set_process_dpi_awareness, DesktopDuplicationApi};
-
-    static INIT: Once = Once::new();
-
-    pub fn initialize() {
-        INIT.call_once(|| {
-            let _ = env_logger::builder()
-                .is_test(true)
-                .filter_level(Debug)
-                .try_init();
-        });
-    }
-
-    #[test]
-    fn test_texture_reader() {
-        initialize();
-
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .thread_name("graphics_thread".to_owned())
-            .enable_time()
-            .build()
-            .unwrap();
-
-        rt.block_on(async {
-            set_process_dpi_awareness();
-            co_init();
-
-            let adapter = AdapterFactory::new().get_adapter_by_idx(0).unwrap();
-            let output = adapter.get_display_by_idx(0).unwrap();
-            let mut dupl = DesktopDuplicationApi::new(adapter, output.clone()).unwrap();
-
-            let (dev, ctx) = dupl.get_device_and_ctx();
-            let mut reader = TextureReader::new(dev, ctx);
-
-            let mut counter = 0;
-            let mut secs = 0;
-            let mut interval = interval(Duration::from_secs(1));
-            let mut data = Vec::<u8>::new();
-            loop {
-                select! {
-                    tex = dupl.acquire_next_vsync_frame().fuse()=>{
-                        if let Err(e) = tex {
-                            println!("error: {:?}",e)
-                        } else {
-                            let tex = tex.unwrap();
-                            reader.get_data(&mut data,&tex).unwrap();
-                            let pitch = tex.desc().width as usize *4;
-                            println!("pitch: {}",pitch);
-                            for i in 0..4{
-                                for j in 0..12{
-                                    print!("{}\t",data[pitch*(i+1)-(12-(j))]);
-                                }
-                                print!("\n");
-                            }
-                            print!("\n");
-                            counter += 1;
-                        };
-                    },
-                    _ = interval.tick().fuse() => {
-                        println!("fps: {}",counter);
-                        counter = 0;
-                        secs+=1;
-                        if secs ==5 {
-                            break;
-                        }
-                    }
-                };
-            }
-        });
-    }
-}
 
 /// Tool for reading GPU only directx textures.
 ///
@@ -227,5 +143,89 @@ impl TextureReader {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(feature = "test")]
+#[cfg(test)]
+mod test {
+    use std::sync::Once;
+    use std::time::Duration;
+
+    use futures::{select, FutureExt};
+    use log::LevelFilter::Debug;
+    use tokio::time::interval;
+
+    use crate::devices::AdapterFactory;
+    use crate::tex_reader::TextureReader;
+    use crate::{co_init, set_process_dpi_awareness, DesktopDuplicationApi};
+
+    static INIT: Once = Once::new();
+
+    pub fn initialize() {
+        INIT.call_once(|| {
+            let _ = env_logger::builder()
+                .is_test(true)
+                .filter_level(Debug)
+                .try_init();
+        });
+    }
+
+    #[test]
+    fn test_texture_reader() {
+        initialize();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .thread_name("graphics_thread".to_owned())
+            .enable_time()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            set_process_dpi_awareness();
+            co_init();
+
+            let adapter = AdapterFactory::new().get_adapter_by_idx(0).unwrap();
+            let output = adapter.get_display_by_idx(0).unwrap();
+            let mut dupl = DesktopDuplicationApi::new(adapter, output.clone()).unwrap();
+
+            let (dev, ctx) = dupl.get_device_and_ctx();
+            let mut reader = TextureReader::new(dev, ctx);
+
+            let mut counter = 0;
+            let mut secs = 0;
+            let mut interval = interval(Duration::from_secs(1));
+            let mut data = Vec::<u8>::new();
+            loop {
+                select! {
+                    tex = dupl.acquire_next_vsync_frame().fuse()=>{
+                        if let Err(e) = tex {
+                            println!("error: {:?}",e)
+                        } else {
+                            let tex = tex.unwrap();
+                            reader.get_data(&mut data,&tex).unwrap();
+                            let pitch = tex.desc().width as usize *4;
+                            println!("pitch: {}",pitch);
+                            for i in 0..4{
+                                for j in 0..12{
+                                    print!("{}\t",data[pitch*(i+1)-(12-(j))]);
+                                }
+                                print!("\n");
+                            }
+                            print!("\n");
+                            counter += 1;
+                        };
+                    },
+                    _ = interval.tick().fuse() => {
+                        println!("fps: {}",counter);
+                        counter = 0;
+                        secs+=1;
+                        if secs ==5 {
+                            break;
+                        }
+                    }
+                };
+            }
+        });
     }
 }

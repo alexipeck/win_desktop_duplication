@@ -29,6 +29,7 @@ use crate::error::DDApiError;
 use crate::types::outputs::{DisplayMode, DisplayOrientation};
 use crate::utils::convert_u16_to_string;
 
+#[cfg(feature = "test")]
 #[cfg(test)]
 mod test {
     use std::sync::atomic::{AtomicI32, Ordering};
