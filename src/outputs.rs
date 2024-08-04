@@ -25,7 +25,8 @@ use windows::Win32::Graphics::Gdi::{
     ENUM_DISPLAY_SETTINGS_FLAGS,
 };
 
-use crate::errors::DDApiError;
+use crate::error::DDApiError;
+use crate::types::outputs::{DisplayMode, DisplayOrientation};
 use crate::utils::convert_u16_to_string;
 
 #[cfg(test)]
@@ -40,7 +41,7 @@ mod test {
     use tokio::time;
 
     use crate::devices::AdapterFactory;
-    use crate::outputs::{DisplayMode, DisplayOrientation};
+    use crate::types::outputs::{DisplayMode, DisplayOrientation};
 
     #[test]
     fn test_display_names() {
@@ -323,25 +324,6 @@ unsafe impl Send for Display {}
 
 unsafe impl Sync for Display {}
 
-/// Enum for display orientation
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Default)]
-pub enum DisplayOrientation {
-    /// Landscape mode
-    #[default]
-    NoRotation,
-
-    /// Portrait mode
-    Rotate90,
-
-    /// Landscape (flipped) mode
-    Rotate180,
-
-    /// Portrait (flipped) mode
-    Rotate270,
-}
-
 impl From<DEVMODE_DISPLAY_ORIENTATION> for DisplayOrientation {
     fn from(i: DEVMODE_DISPLAY_ORIENTATION) -> Self {
         match i.0 {
@@ -362,35 +344,6 @@ impl From<DisplayOrientation> for DEVMODE_DISPLAY_ORIENTATION {
             DisplayOrientation::Rotate270 => 3,
         })
     }
-}
-
-#[repr(C)]
-#[derive(Clone, Default, Debug)]
-/**
-DisplayMode represents one display mode of monitor. It contains resolution, refresh-rate and orientation.
-The resolution contains width and height of display for their default orientation.
-
-For example, a 1920 x 1080 monitor will have width 1920 and height 1080 irrespective of the orientation of
-the monitor.
- */
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct DisplayMode {
-    /// width of the given display in pixels
-    pub width: u32,
-    /// height of the given display in pixels
-    pub height: u32,
-
-    /// orientation of the display
-    pub orientation: DisplayOrientation,
-
-    /// refresh-rate is usually represented as a fraction. refresh_num is numerator of that fraction
-    pub refresh_num: u32,
-    /// refresh_den is denominator of refresh-rate fraction.
-    pub refresh_den: u32,
-
-    /// this determines if the display is using 8bit or 16bit output mode. (10 bit is
-    /// represented as 16 bit in windows)
-    pub hdr: bool,
 }
 
 /// used to receive sync signal with vsync. this is a async stream.

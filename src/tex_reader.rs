@@ -8,8 +8,7 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_MAP_READ, D3D11_USAGE_STAGING,
 };
 
-use crate::texture::{ColorFormat, Texture};
-use crate::{DDApiError, Result};
+use crate::{error::DDApiError, texture::Texture, types::texture::ColorFormat, Result};
 
 #[cfg(test)]
 mod test {

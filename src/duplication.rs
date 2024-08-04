@@ -42,9 +42,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::devices::Adapter;
-use crate::errors::DDApiError;
+use crate::error::DDApiError;
 use crate::outputs::{Display, DisplayVSyncStream};
-use crate::texture::{Texture, TextureDesc};
+use crate::texture::Texture;
+use crate::types::texture::TextureDesc;
 use crate::Result;
 
 #[cfg(test)]
@@ -59,7 +60,7 @@ mod test {
 
     use crate::devices::AdapterFactory;
     use crate::duplication::DesktopDuplicationApi;
-    use crate::outputs::DisplayMode;
+    use crate::types::outputs::DisplayMode;
     use crate::utils::{co_init, set_process_dpi_awareness};
     use crate::DDApiError;
 
