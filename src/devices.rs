@@ -3,7 +3,10 @@
 
 use windows::core::{Interface, Result as WinResult};
 use windows::Win32::Foundation::LUID;
-use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory2, DXGI_ADAPTER_DESC, DXGI_ADAPTER_DESC3, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IDXGIAdapter4, IDXGIFactory6};
+use windows::Win32::Graphics::Dxgi::{
+    CreateDXGIFactory2, IDXGIAdapter4, IDXGIFactory6, DXGI_ADAPTER_DESC3,
+    DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+};
 
 use crate::outputs::Display;
 use crate::utils::convert_u16_to_string;
@@ -105,10 +108,7 @@ pub struct DisplayIterator {
 
 impl DisplayIterator {
     fn new(adapter: Adapter) -> Self {
-        Self {
-            adapter,
-            idx: 0,
-        }
+        Self { adapter, idx: 0 }
     }
     fn get_display_by_idx(adapter: &Adapter, idx: u32) -> Option<Display> {
         let output = unsafe { adapter.0.EnumOutputs(idx) };
@@ -188,7 +188,10 @@ impl AdapterFactory {
 
     /// retrieve an adapter by index
     pub fn get_adapter_by_idx(&self, idx: u32) -> Option<Adapter> {
-        let adapter: WinResult<IDXGIAdapter4> = unsafe { self.fac.EnumAdapterByGpuPreference(idx, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE) };
+        let adapter: WinResult<IDXGIAdapter4> = unsafe {
+            self.fac
+                .EnumAdapterByGpuPreference(idx, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE)
+        };
         if adapter.is_ok() {
             Some(Adapter(adapter.unwrap().cast().unwrap()))
         } else {

@@ -25,20 +25,25 @@ doc = true             # Is documented by default.
 edition = "2021"       # The edition of the target.
 crate-type = ["lib"]   # The crate types to generate.
 
+[features]
+serde = ["dep:serde"]
+default = ["serde"]
+
 
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
 targets = ["aarch64-pc-windows-msvc", "i686-pc-windows-msvc", "x86_64-pc-windows-msvc"]
 
 [dev-dependencies]
-env_logger = "0.11.3"
+env_logger = "0.11.5"
 
 [dependencies]
-futures = "0.3.26"
-log = "0.4.17"
+futures = "0.3.30"
+log = "0.4.22"
+serde = { version = "1.0.204", optional = true, features = ["derive"]}
 
 [dependencies.tokio]
-version = "1.26.0"
+version = "1.39.2"
 features = [
     "rt",
     "time",
