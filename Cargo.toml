@@ -27,7 +27,6 @@ crate-type = ["lib"]   # The crate types to generate.
 
 [features]
 serde = ["dep:serde"]
-cross_platform_types = []
 windows = ["dep:windows", "tokio", "futures", "log"]
 default = ["windows"]
 
